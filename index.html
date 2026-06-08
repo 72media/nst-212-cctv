@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>CCTV นครศรีธรรมราช | ดูสดพร้อมวันเวลา</title>
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #080c14;
+            --panel-bg: rgba(15, 23, 42, 0.7);
+            --panel-bg-hover: rgba(30, 41, 59, 0.8);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --panel-border-glow: rgba(6, 182, 212, 0.3);
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --glass-blur: blur(16px) saturate(180%);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', 'Noto Sans Thai', sans-serif; background: var(--bg-primary); overflow: hidden; height: 100vh; color: var(--text-primary); }
+        .app { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+        .main { width: 100%; height: 100%; position: relative; }
+        .map-area { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+        #map { width: 100%; height: 100%; background: #0b0f19; }
+
+        /* HEADER */
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            height: 64px;
+            z-index: 1000;
+            background: var(--panel-bg);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--glass-shadow);
+            pointer-events: auto;
+        }
+        .datetime {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 8px 20px;
+            border-radius: 30px;
+            display: flex;
+            gap: 24px;
+            font-size: 0.85rem;
+        }
+        .datetime i { color: var(--accent-cyan); margin-right: 4px; }
+        .multiview-btn {
+            background: linear-gradient(135deg, #0891b2, #0284c7);
+            border: none;
+            padding: 10px 24px;
+            border-radius: 30px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: 0.3s;
+            box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
+        }
+        .multiview-btn:hover { transform: translateY(-2px); background: linear-gradient(135deg, #06b6d4, #0ea5e9); }
+
+        /* SIDEBAR */
+        .sidebar {
+            position: absolute;
+            top: 100px;
+            left: 20px;
+            bottom: 20px;
+            width: 340px;
+            background: var(--panel-bg);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--panel-border);
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            transition: 0.4s;
+            z-index: 1000;
+            box-shadow: var(--glass-shadow);
+        }
+        .sidebar.collapsed { transform: translateX(-380px); opacity: 0; pointer-events: none; }
+        .sidebar-header { padding: 20px 24px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .sidebar-header h2 { font-size: 1.15rem; display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-header h2 i { color: var(--accent-cyan); }
+        .cctv-link {
+            text-decoration: none;
+            color: inherit;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .cctv-link:hover {
+            opacity: 0.8;
+            text-decoration: underline;
+            text-underline-offset: 4px;
+        }
+        .cat-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .cat-btn {
+            background: rgba(30,41,59,0.4);
+            border: none;
+            padding: 6px 14px;
+            border-radius: 20px;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .cat-btn.active { background: linear-gradient(135deg, rgba(6,182,212,0.25), rgba(59,130,246,0.25)); color: var(--accent-cyan); font-weight: 600; }
+        .cam-list { flex: 1; overflow-y: auto; padding: 14px 20px; }
+        .cam-item {
+            background: rgba(30,41,59,0.3);
+            border: 1px solid rgba(255,255,255,0.02);
+            border-radius: 16px;
+            padding: 14px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .cam-item:hover { background: var(--panel-bg-hover); border-color: var(--panel-border-glow); transform: translateX(4px); }
+        .cam-name { font-weight: 600; display: flex; justify-content: space-between; font-size: 0.85rem; }
+        .cam-status { font-size: 0.75rem; margin: 8px 0 12px; display: flex; align-items: center; gap: 6px; }
+        .online-dot { width: 8px; height: 8px; background: var(--accent-green); border-radius: 50%; box-shadow: 0 0 8px var(--accent-green); }
+        .offline-dot { width: 8px; height: 8px; background: var(--text-secondary); border-radius: 50%; }
+        .cam-actions { display: flex; gap: 8px; }
+        .small-btn {
+            flex: 1;
+            background: rgba(15,23,42,0.5);
+            border: 1px solid rgba(255,255,255,0.06);
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .small-btn:hover { background: rgba(6,182,212,0.12); border-color: rgba(6,182,212,0.3); color: var(--accent-cyan); }
+        .map-switcher {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            background: var(--panel-bg);
+            backdrop-filter: var(--glass-blur);
+            padding: 6px;
+            border-radius: 40px;
+            display: flex;
+            gap: 6px;
+            z-index: 1000;
+            border: 1px solid var(--panel-border);
+        }
+        .map-switcher button {
+            background: transparent;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 30px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+        .map-switcher button.active { background: linear-gradient(135deg, rgba(6,182,212,0.25), rgba(59,130,246,0.25)); color: var(--accent-cyan); font-weight: 600; }
+        .toggle-sidebar {
+            position: absolute;
+            left: 360px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--panel-bg);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--panel-border);
+            width: 36px;
+            height: 72px;
+            border-radius: 0 14px 14px 0;
+            cursor: pointer;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-cyan);
+        }
+        .sidebar.collapsed ~ .toggle-sidebar { left: 20px; border-radius: 12px; }
+        .leaflet-popup-content-wrapper { background: rgba(15,23,42,0.95) !important; backdrop-filter: blur(12px); border-radius: 20px !important; border: 1px solid var(--panel-border); color: white; width: 340px !important; }
+        .custom-popup-iframe iframe { width: 100%; height: 200px; border-radius: 8px; border: none; }
+
+        /* SINGLE MODAL (ดูสด) */
+        .single-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(8,12,21,0.9);
+            backdrop-filter: blur(16px);
+            z-index: 3000;
+            justify-content: center;
+            align-items: center;
+        }
+        .single-modal.active { display: flex; }
+        .single-panel {
+            background: rgba(15,23,42,0.85);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(12px);
+            width: 90%;
+            max-width: 1300px;
+            height: 85vh;
+            border-radius: 28px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .single-header {
+            padding: 18px 24px;
+            background: rgba(15,23,42,0.6);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .cam-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .thai-datetime {
+            background: rgba(6,182,212,0.15);
+            border: 1px solid rgba(6,182,212,0.4);
+            padding: 6px 16px;
+            border-radius: 40px;
+            font-family: 'Noto Sans Thai', monospace;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+        }
+        .single-controls button {
+            background: rgba(30,41,59,0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 8px 18px;
+            border-radius: 30px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: 0.2s;
+            font-weight: 500;
+        }
+        .single-controls button:hover { background: rgba(6,182,212,0.2); border-color: var(--accent-cyan); color: white; }
+        .single-video-container { flex: 1; margin: 12px; border-radius: 20px; overflow: hidden; background: black; }
+        .single-video-container iframe { width: 100%; height: 100%; border: none; }
+
+        /* MULTIVIEW MODAL */
+        .multiview-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(8,12,21,0.85);
+            backdrop-filter: blur(12px);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        .multiview-modal.active { display: flex; }
+        .multiview-panel {
+            background: rgba(15,23,42,0.75);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(12px);
+            width: 95%;
+            max-width: 1500px;
+            height: 90vh;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+        }
+        .mv-header { padding: 16px 24px; background: rgba(15,23,42,0.4); display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .grid-3x2 { flex: 1; display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(2,1fr); gap: 12px; padding: 16px; }
+        .video-slot { background: rgba(15,23,42,0.6); border-radius: 16px; position: relative; overflow: hidden; cursor: pointer; border: 1px solid rgba(255,255,255,0.04); }
+        .video-slot iframe { width: 100%; height: 100%; border: none; }
+        .slot-overlay { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(0deg, rgba(15,23,42,0.95), transparent); padding: 12px; display: flex; justify-content: space-between; font-size: 0.7rem; pointer-events: none; }
+        .remove-slot-btn { position: absolute; top: 10px; right: 10px; background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); border-radius: 20px; padding: 4px 10px; font-size: 0.65rem; color: #fca5a5; cursor: pointer; z-index: 10; pointer-events: auto; }
+        .empty-slot { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary); flex-direction: column; gap: 8px; }
+    </style>
+</head>
+<body>
+<div class="app">
+    <div class="header">
+        <div class="datetime"><div><i class="far fa-calendar-alt"></i> <span id="thaiDate">--</span></div><div><i class="far fa-clock"></i> <span id="thaiTime">--:--:--</span></div></div>
+        <button id="openMultiBtn" class="multiview-btn"><i class="fas fa-th-large"></i> มัลติวิว 3x2</button>
+    </div>
+    <div class="main">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="https://nstcctv.nakhoncity.org" target="_blank" style="text-decoration: none; color: inherit;">
+  <h2><i class="fas fa-video"></i> CCTV นครศรีธรรมราช <span id="totalCount">212</span></h2>
+</a>
+                <p style="font-size:0.7rem; margin-top: 6px;">✨ คลิก "ดูสด" → ภาพ + วันเวลา</p>
+            </div>
+            <div class="cat-tabs" id="catTabs"></div>
+            <div class="cam-list" id="camList"></div>
+        </div>
+        <button id="toggleSidebarBtn" class="toggle-sidebar"><i class="fas fa-chevron-left"></i></button>
+        <div class="map-area"><div id="map"></div><div class="map-switcher"><button id="btnGoogle" class="active">Google Hybrid</button><button id="btnTopo">OpenTopoMap</button><button id="btnOsm">OSM</button></div></div>
+    </div>
+</div>
+
+<!-- SINGLE VIEW MODAL (ดูสด พร้อมวันเวลา - ไม่มีปุ่มจับภาพ) -->
+<div id="singleModal" class="single-modal">
+    <div class="single-panel">
+        <div class="single-header">
+            <div class="cam-title"><i class="fas fa-camera"></i> <span id="singleCamName">--</span></div>
+            <div class="thai-datetime" id="singleThaiDateTime">วันจันทร์ที่ 8 มิถุนายน 2569 08:44:20</div>
+            <div class="single-controls">
+                <button id="singleCloseBtn"><i class="fas fa-times"></i> ปิด</button>
+            </div>
+        </div>
+        <div id="singleVideoContainer" class="single-video-container">
+            <iframe id="singleIframe" src="about:blank" allowfullscreen></iframe>
+        </div>
+    </div>
+</div>
+
+<!-- MULTIVIEW MODAL -->
+<div id="multiModal" class="multiview-modal">
+    <div class="multiview-panel">
+        <div class="mv-header"><h3><i class="fas fa-th-large"></i> มัลติวิว 3x2 • คลิกภาพขยายเต็มจอ</h3><div><button id="clearAllSlots"><i class="fas fa-trash-alt"></i> ล้างทั้งหมด</button><button id="closeMultiBtn" style="margin-left:10px;"><i class="fas fa-times"></i> ปิด</button></div></div>
+        <div class="grid-3x2" id="multiGrid"></div>
+    </div>
+</div>
+
+<script>
+    (function(){
+        let map, allCameras = [], statusMap = {}, currentLayer, currentCat = 'all', sidebarCollapsed = false;
+        const typeGroups = { 'โรงเรียน': L.layerGroup(), 'จราจร': L.layerGroup(), 'ระดับน้ำ': L.layerGroup(), 'เซฟโซน': L.layerGroup() };
+        const typeColor = { 'โรงเรียน':'#10b981', 'จราจร':'#ef4444', 'ระดับน้ำ':'#0ea5e9', 'เซฟโซน':'#f59e0b' };
+        let markerMap = new Map();
+        let multiSlots = [null, null, null, null, null, null];
+
+        function getCamType(cam){
+            const grp = cam.group || '';
+            if(grp.includes('โรงเรียน') || cam.id?.startsWith('SC')) return 'โรงเรียน';
+            if(grp.includes('จราจร') || cam.id?.startsWith('TF')) return 'จราจร';
+            if(grp.includes('ระดับน้ำ') || cam.id?.startsWith('WL')) return 'ระดับน้ำ';
+            if(grp.includes('เซฟโซน') || cam.id?.startsWith('SZ')) return 'เซฟโซน';
+            return 'จราจร';
+        }
+        function getStatus(camId){ return statusMap[camId] === 'online'; }
+        function escapeHtml(str){ if(!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]); }
+
+        // ฟังก์ชันแปลงวันที่แบบไทย (วัน เดือน ปี เวลา)
+        function getThaiDateTime() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+            return now.toLocaleDateString('th-TH', options);
+        }
+
+        // SINGLE MODAL แสดงวันเวลาอัปเดตทุกวินาที
+        let singleInterval = null;
+        let currentSingleCamId = null, currentSingleCamName = "";
+        function updateSingleModalTime() {
+            const thaiDateTime = getThaiDateTime();
+            const timeElem = document.getElementById('singleThaiDateTime');
+            if(timeElem) timeElem.innerText = thaiDateTime;
+        }
+        function showSingleView(camId, camName) {
+            const iframe = document.getElementById('singleIframe');
+            const nameSpan = document.getElementById('singleCamName');
+            nameSpan.innerHTML = `${escapeHtml(camName)} <span style="font-size:0.7rem; color:#94a3b8;">(${camId})</span>`;
+            iframe.src = `https://nstcctv.nakhoncity.org/cam/${camId}/`;
+            currentSingleCamId = camId;
+            currentSingleCamName = camName;
+            document.getElementById('singleModal').classList.add('active');
+            updateSingleModalTime();
+            if(singleInterval) clearInterval(singleInterval);
+            singleInterval = setInterval(() => {
+                if(document.getElementById('singleModal').classList.contains('active')) updateSingleModalTime();
+                else clearInterval(singleInterval);
+            }, 1000);
+        }
+        function closeSingleView() {
+            document.getElementById('singleModal').classList.remove('active');
+            document.getElementById('singleIframe').src = 'about:blank';
+            if(singleInterval) clearInterval(singleInterval);
+            currentSingleCamId = null;
+        }
+
+        // MULTIVIEW
+        function addToMultiView(camId, camName){
+            const idx = multiSlots.findIndex(s => s === null);
+            if(idx === -1){ alert('มัลติวิวเต็มแล้ว (6 กล้อง) กรุณาลบช่องใดช่องหนึ่ง'); return false; }
+            multiSlots[idx] = { id: camId, name: camName };
+            renderMultiGrid();
+            document.getElementById('multiModal').classList.add('active');
+            return true;
+        }
+        function removeFromSlot(i){ multiSlots[i] = null; renderMultiGrid(); }
+        function clearAllSlots(){ multiSlots = [null,null,null,null,null,null]; renderMultiGrid(); }
+        function renderMultiGrid(){
+            const grid = document.getElementById('multiGrid');
+            grid.innerHTML = '';
+            for(let i=0;i<6;i++){
+                const slot = multiSlots[i];
+                const cell = document.createElement('div'); cell.className = 'video-slot';
+                if(slot){
+                    const iframe = document.createElement('iframe');
+                    iframe.src = `https://nstcctv.nakhoncity.org/cam/${slot.id}/`;
+                    cell.appendChild(iframe);
+                    const overlay = document.createElement('div'); overlay.className = 'slot-overlay';
+                    overlay.innerHTML = `<span>📹 ${escapeHtml(slot.name.slice(0,28))}</span><span class="slot-time">--/--/---- --:--:--</span>`;
+                    cell.appendChild(overlay);
+                    const rm = document.createElement('button'); rm.className = 'remove-slot-btn'; rm.innerHTML = '<i class="fas fa-trash"></i> ลบ';
+                    rm.onclick = (e) => { e.stopPropagation(); removeFromSlot(i); };
+                    cell.appendChild(rm);
+                    cell.onclick = () => { if(cell.requestFullscreen) cell.requestFullscreen(); else alert('เบราว์เซอร์ไม่รองรับ Fullscreen'); };
+                } else {
+                    cell.innerHTML = '<div class="empty-slot"><i class="fas fa-plus-circle"></i><span>คลิก + เพิ่มกล้อง</span></div>';
+                }
+                grid.appendChild(cell);
+            }
+            updateSlotTimes();
+        }
+        function updateSlotTimes(){
+            const now = new Date();
+            const t = now.toLocaleTimeString('th-TH') + ' ' + now.toLocaleDateString('th-TH');
+            document.querySelectorAll('.slot-time').forEach(el => el.innerText = t);
+        }
+
+        // MARKER POPUP แสดงภาพสดใน popup (เหมือนเดิม)
+        function createPopupContent(cam) {
+            const isOnline = getStatus(cam.id);
+            const camId = cam.id;
+            const camName = cam.name;
+            return `
+                <div style="min-width:280px;">
+                    <div class="custom-popup-iframe">
+                        <iframe src="https://nstcctv.nakhoncity.org/cam/${camId}/" allowfullscreen></iframe>
+                    </div>
+                    <div class="popup-cam-name">📹 ${escapeHtml(camName)}</div>
+                    <div class="popup-status"><span class="${isOnline ? 'online-dot' : 'offline-dot'}"></span> ${isOnline ? 'ONLINE' : 'OFFLINE'}</div>
+                    <div class="popup-buttons" style="display:flex; gap:8px; margin-top:8px;">
+                        <button class="btn-fullscreen" data-id="${camId}" data-name="${escapeHtml(camName)}" style="flex:1; background:#3b82f6; border:none; padding:6px; border-radius:20px; color:white;"><i class="fas fa-expand"></i> เต็มจอ</button>
+                        <button class="btn-multiview" data-id="${camId}" data-name="${escapeHtml(camName)}" style="flex:1; background:#0891b2; border:none; padding:6px; border-radius:20px; color:white;"><i class="fas fa-th-large"></i> มัลติวิว</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function addMarkersToMap(cameras){
+            Object.values(typeGroups).forEach(g => g.clearLayers());
+            markerMap.clear();
+            cameras.forEach(cam => {
+                const type = getCamType(cam);
+                const color = typeColor[type];
+                const marker = L.circleMarker([cam.lat, cam.lng], { radius: 7, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 0.9 });
+                const popupContent = createPopupContent(cam);
+                marker.bindPopup(popupContent, { maxWidth: 340, minWidth: 300 });
+                marker.on('popupopen', () => {
+                    const container = document.querySelector('.leaflet-popup-content');
+                    if(container){
+                        const fullBtn = container.querySelector('.btn-fullscreen');
+                        const multiBtn = container.querySelector('.btn-multiview');
+                        if(fullBtn) fullBtn.onclick = (e) => { e.stopPropagation(); showSingleView(fullBtn.dataset.id, fullBtn.dataset.name); map.closePopup(); };
+                        if(multiBtn) multiBtn.onclick = (e) => { e.stopPropagation(); addToMultiView(multiBtn.dataset.id, multiBtn.dataset.name); map.closePopup(); };
+                    }
+                });
+                typeGroups[type].addLayer(marker);
+                markerMap.set(cam.id, marker);
+            });
+            for(let g in typeGroups) map.addLayer(typeGroups[g]);
+        }
+
+        // SIDEBAR รายการกล้อง (ปุ่มดูสด)
+        function renderCamList(){
+            const container = document.getElementById('camList');
+            if(!allCameras.length){ container.innerHTML = '<div style="padding:20px;">กำลังโหลด...</div>'; return; }
+            let filtered = currentCat === 'all' ? allCameras : allCameras.filter(c => getCamType(c) === currentCat);
+            let html = '';
+            filtered.forEach(cam => {
+                const online = getStatus(cam.id);
+                html += `<div class="cam-item" data-id="${cam.id}" data-name="${escapeHtml(cam.name)}" data-lat="${cam.lat}" data-lng="${cam.lng}">
+                    <div class="cam-name">${escapeHtml(cam.name)} <span style="font-size:0.65rem;">${cam.id}</span></div>
+                    <div class="cam-status"><span class="${online ? 'online-dot' : 'offline-dot'}"></span> ${online ? 'ออนไลน์' : 'ออฟไลน์'}</div>
+                    <div class="cam-actions">
+                        <button class="small-btn watch-local" data-id="${cam.id}" data-name="${escapeHtml(cam.name)}"><i class="fas fa-play"></i> ดูสด</button>
+                        <button class="small-btn multi-local" data-id="${cam.id}" data-name="${escapeHtml(cam.name)}"><i class="fas fa-th-large"></i> มัลติวิว</button>
+                    </div>
+                </div>`;
+            });
+            container.innerHTML = html;
+            // ปุ่มดูสด
+            document.querySelectorAll('.watch-local').forEach(btn => {
+                btn.onclick = (e) => { e.stopPropagation(); showSingleView(btn.dataset.id, btn.dataset.name); };
+            });
+            document.querySelectorAll('.multi-local').forEach(btn => {
+                btn.onclick = (e) => { e.stopPropagation(); addToMultiView(btn.dataset.id, btn.dataset.name); };
+            });
+            // คลิกทั้งการ์ด = ดูสด
+            document.querySelectorAll('.cam-item').forEach(card => {
+                card.onclick = (e) => { if(e.target.tagName === 'BUTTON') return; showSingleView(card.dataset.id, card.dataset.name); };
+            });
+        }
+
+        function renderCategoryTabs(){
+            const cats = ['all','โรงเรียน','จราจร','ระดับน้ำ','เซฟโซน'];
+            const labels = {'all':'ทั้งหมด','โรงเรียน':'🏫 โรงเรียน','จราจร':'🚦 จราจร','ระดับน้ำ':'💧 ระดับน้ำ','เซฟโซน':'🛡️ เซฟโซน'};
+            let html = '';
+            cats.forEach(c => {
+                let count = c==='all' ? allCameras.length : allCameras.filter(cam => getCamType(cam) === c).length;
+                html += `<button class="cat-btn ${currentCat===c ? 'active':''}" data-cat="${c}">${labels[c]} <span>${count}</span></button>`;
+            });
+            document.getElementById('catTabs').innerHTML = html;
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                btn.onclick = () => {
+                    currentCat = btn.dataset.cat;
+                    renderCategoryTabs();
+                    renderCamList();
+                    for(let type in typeGroups){
+                        if(currentCat === 'all' || type === currentCat) map.addLayer(typeGroups[type]);
+                        else map.removeLayer(typeGroups[type]);
+                    }
+                };
+            });
+        }
+
+        // API
+        async function fetchStatus(){ try{ const res = await fetch('https://nstcctv.nakhoncity.org/api/camera-status'); if(res.ok) statusMap = await res.json(); }catch(e){} }
+        async function fetchCameras(){
+            try{
+                const res = await fetch('https://nstcctv.nakhoncity.org/api/cameras/public');
+                const data = await res.json();
+                if(Array.isArray(data)){
+                    allCameras = data.map(c => ({ id: c.id, name: c.name || c.id, lat: parseFloat(c.lat), lng: parseFloat(c.lng), group: c.group || '' }));
+                }
+                document.getElementById('totalCount').innerText = allCameras.length;
+                renderCamList();
+                renderCategoryTabs();
+                addMarkersToMap(allCameras);
+            }catch(e){ document.getElementById('camList').innerHTML = '<div>โหลดข้อมูลล้มเหลว</div>'; }
+        }
+
+        // MAP LAYERS
+        const googleHybrid = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20 });
+        const openTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17 });
+        const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+        function switchLayer(name){
+            if(currentLayer) map.removeLayer(currentLayer);
+            let layer = name === 'google' ? googleHybrid : (name === 'topo' ? openTopo : osm);
+            layer.addTo(map);
+            currentLayer = layer;
+            document.querySelectorAll('.map-switcher button').forEach(btn => btn.classList.remove('active'));
+            if(name === 'google') document.getElementById('btnGoogle').classList.add('active');
+            if(name === 'topo') document.getElementById('btnTopo').classList.add('active');
+            if(name === 'osm') document.getElementById('btnOsm').classList.add('active');
+        }
+
+        function updateDateTime(){
+            const now = new Date();
+            document.getElementById('thaiDate').innerText = now.toLocaleDateString('th-TH', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
+            document.getElementById('thaiTime').innerText = now.toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+        }
+
+        function initSidebar(){
+            const sidebar = document.getElementById('sidebar');
+            const btn = document.getElementById('toggleSidebarBtn');
+            const saved = localStorage.getItem('sidebarCCTV');
+            if(saved === 'true') { sidebar.classList.add('collapsed'); sidebarCollapsed = true; updateIcon(); }
+            btn.onclick = () => {
+                sidebarCollapsed = !sidebarCollapsed;
+                sidebar.classList.toggle('collapsed');
+                localStorage.setItem('sidebarCCTV', sidebarCollapsed);
+                updateIcon();
+                setTimeout(() => map.invalidateSize(), 300);
+            };
+            function updateIcon(){ const i = btn.querySelector('i'); if(sidebarCollapsed){ i.classList.remove('fa-chevron-left'); i.classList.add('fa-chevron-right'); } else { i.classList.remove('fa-chevron-right'); i.classList.add('fa-chevron-left'); } }
+        }
+
+        async function init(){
+            map = L.map('map', { zoomControl: false }).setView([8.43, 99.96], 13);
+            L.control.zoom({ position: 'topright' }).addTo(map);
+            googleHybrid.addTo(map);
+            currentLayer = googleHybrid;
+            await fetchStatus();
+            await fetchCameras();
+            updateDateTime();
+            setInterval(updateDateTime, 1000);
+            setInterval(() => { if(document.getElementById('multiModal').classList.contains('active')) updateSlotTimes(); }, 1000);
+            document.getElementById('btnGoogle').onclick = () => switchLayer('google');
+            document.getElementById('btnTopo').onclick = () => switchLayer('topo');
+            document.getElementById('btnOsm').onclick = () => switchLayer('osm');
+            document.getElementById('openMultiBtn').onclick = () => { renderMultiGrid(); document.getElementById('multiModal').classList.add('active'); };
+            document.getElementById('closeMultiBtn').onclick = () => document.getElementById('multiModal').classList.remove('active');
+            document.getElementById('clearAllSlots').onclick = clearAllSlots;
+            document.getElementById('singleCloseBtn').onclick = closeSingleView;
+            document.getElementById('singleModal').addEventListener('click', (e) => { if(e.target === document.getElementById('singleModal')) closeSingleView(); });
+            initSidebar();
+        }
+        init();
+    })();
+</script>
+</body>
+</html>
